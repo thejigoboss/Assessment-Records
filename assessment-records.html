@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Assessment Records</title>
+<!--
+  SHARED STORAGE (for hosting with multiple people)
+  -------------------------------------------------
+  Leave APPS_SCRIPT_URL empty to test: data is saved only in your own browser.
+  To share across people, create a Google Sheet > Extensions > Apps Script, paste the code
+  below, Deploy > New deployment > Web app (Execute as: Me, Access: Anyone), then paste the
+  Web app URL into APPS_SCRIPT_URL.
+
+  function doGet(){
+    var s=SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
+    var v=s.getDataRange().getValues().filter(function(r){return r[0]}).map(function(r){return JSON.parse(r[0])});
+    return ContentService.createTextOutput(JSON.stringify(v)).setMimeType(ContentService.MimeType.JSON);
+  }
+  function doPost(e){
+    var s=SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
+    var d=JSON.parse(e.postData.contents); s.clear();
+    if(d.length) s.getRange(1,1,d.length,1).setValues(d.map(function(x){return [JSON.stringify(x)]}));
+    return ContentService.createTextOutput('ok');
+  }
+-->
+<style>
+  :root{
+    --ink:#17222d; --ink-2:#4a5866; --ink-3:#7a8794;
+    --paper:#eef1f4; --card:#ffffff; --line:#d9dfe5;
+    --brand:#1f3a52; --brand-2:#2c5273;
+    --red:#c53a32; --red-bg:#fbe7e5;
+    --yellow:#d99a00; --yellow-bg:#fff3cf;
+    --green:#2b8a57; --green-bg:#dff3e8;
+    --radius:10px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    font-family:"Segoe UI",system-ui,-apple-system,Roboto,"Helvetica Neue",Arial,sans-serif;
+    background:var(--paper); color:var(--ink); font-size:15px; line-height:1.45;
+  }
+  button,input,select,textarea{font:inherit;color:inherit}
+  :focus-visible{outline:3px solid #7fb0e0; outline-offset:2px}
+
+  header{background:var(--brand); color:#fff; padding:18px 20px}
+  .wrap{max-width:1100px; margin:0 auto}
+  .top{display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap}
+  h1{margin:0; font-size:22px; font-weight:650; letter-spacing:.2px}
+  .sync{font-size:12.5px; color:#b9cbdb; display:flex; align-items:center; gap:6px}
+  .dot{width:8px;height:8px;border-radius:50%;background:#6fd09a}
+  .dot.busy{background:#f0c24d}
+  .dot.err{background:#ff7b72}
+
+  /* progress strip: the one distinctive element */
+  .bar{display:flex; height:16px; border-radius:8px; overflow:hidden; background:var(--line)}
+  .bar span{display:block; height:100%; transition:width .4s}
+  .bar .p{background:var(--red)} .bar .b{background:var(--yellow)} .bar .c{background:var(--green)}
+  .stats{display:grid; grid-template-columns:repeat(5,1fr); gap:10px; margin:14px 0 22px}
+  .stat{background:var(--card); border:1px solid var(--line); border-radius:8px; padding:12px 14px}
+  .stat b{display:block; font-size:28px; font-weight:650; line-height:1.15}
+  .stat small{color:var(--ink-2); font-size:13px}
+  .dash h3{margin:0 0 10px; font-size:16px}
+  .stat.p{border-left:4px solid var(--red)} .stat.b{border-left:4px solid var(--yellow)} .stat.c{border-left:4px solid var(--green)}
+
+  main{padding:18px 20px 60px}
+  .tabs{display:flex; gap:6px; border-bottom:2px solid var(--line); margin-bottom:14px; overflow-x:auto}
+  .tab{background:none; border:0; padding:10px 16px; cursor:pointer; font-weight:600; color:var(--ink-2);
+       border-bottom:3px solid transparent; margin-bottom:-2px; white-space:nowrap}
+  .tab[aria-selected="true"]{color:var(--brand); border-bottom-color:var(--brand)}
+  .count{display:inline-block; min-width:22px; padding:0 7px; margin-left:6px; border-radius:11px;
+         background:var(--line); font-size:12.5px; text-align:center}
+  .tab[aria-selected="true"] .count{background:var(--brand); color:#fff}
+
+  .tools{display:flex; gap:10px; flex-wrap:wrap; margin-bottom:12px; align-items:center}
+  .tools input[type=search]{flex:1 1 220px; padding:9px 12px; border:1px solid var(--line); border-radius:8px; background:#fff}
+  .tools select{padding:9px 10px; border:1px solid var(--line); border-radius:8px; background:#fff}
+  .btn{border:1px solid var(--line); background:#fff; padding:9px 14px; border-radius:8px; cursor:pointer; font-weight:600}
+  .btn:hover{background:#f6f8fa}
+  .btn.primary{background:var(--brand); border-color:var(--brand); color:#fff}
+  .btn.primary:hover{background:var(--brand-2)}
+  .btn.danger{color:var(--red)}
+  .btn.small{padding:5px 10px; font-size:13px}
+  .btn.ok{background:var(--green); border-color:var(--green); color:#fff}
+
+  .tablewrap{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); overflow-x:auto}
+  table{width:100%; border-collapse:collapse; min-width:760px}
+  th{text-align:left; font-size:13px; color:var(--ink-2); font-weight:600; padding:11px 14px; background:#f6f8fa; border-bottom:1px solid var(--line)}
+  td{padding:11px 14px; border-bottom:1px solid var(--line); vertical-align:middle}
+  tr:last-child td{border-bottom:0}
+  tr.row-p td:first-child{box-shadow:inset 4px 0 0 var(--red)}
+  tr.row-b td:first-child{box-shadow:inset 4px 0 0 var(--yellow)}
+  tr.row-c td:first-child{box-shadow:inset 4px 0 0 var(--green)}
+  .site{font-weight:650}
+  .sub{color:var(--ink-3); font-size:12.5px}
+  .num{text-align:right; font-variant-numeric:tabular-nums}
+  .remarks{max-width:260px; color:var(--ink-2)}
+
+  .status{appearance:none; -webkit-appearance:none; border:0; border-radius:16px; padding:6px 28px 6px 12px; font-weight:650; font-size:13.5px; cursor:pointer;
+          background-image:linear-gradient(45deg,transparent 50%,currentColor 50%),linear-gradient(135deg,currentColor 50%,transparent 50%);
+          background-position:calc(100% - 15px) 55%,calc(100% - 10px) 55%; background-size:5px 5px,5px 5px; background-repeat:no-repeat}
+  .status.p{background-color:var(--red-bg); color:var(--red)}
+  .status.b{background-color:var(--yellow-bg); color:#8a6200}
+  .status.c{background-color:var(--green-bg); color:var(--green)}
+
+  .empty{padding:44px 20px; text-align:center; color:var(--ink-2)}
+  .empty b{display:block; color:var(--ink); font-size:16px; margin-bottom:4px}
+  .actions{white-space:nowrap; text-align:right}
+  .late{color:var(--red); font-weight:650}
+  .note{margin:10px 2px 0; color:var(--ink-3); font-size:13px}
+
+  dialog{border:0; border-radius:12px; padding:0; width:min(480px,94vw); box-shadow:0 20px 60px #0004}
+  dialog::backdrop{background:#0a1a2a80}
+  .dlg{padding:22px}
+  .dlg h2{margin:0 0 14px; font-size:18px}
+  label{display:block; font-weight:600; font-size:13.5px; margin:12px 0 5px}
+  .field{width:100%; padding:10px 12px; border:1px solid var(--line); border-radius:8px; background:#fff}
+  textarea.field{min-height:84px; resize:vertical}
+  .seg{display:grid; grid-template-columns:repeat(3,1fr); gap:8px}
+  .seg input{position:absolute; opacity:0}
+  .seg label{margin:0; text-align:center; padding:10px 6px; border:1px solid var(--line); border-radius:8px; cursor:pointer; font-weight:600}
+  .seg input:checked+label{background:var(--brand); border-color:var(--brand); color:#fff}
+  .seg input:focus-visible+label{outline:3px solid #7fb0e0; outline-offset:2px}
+  .row2{display:grid; grid-template-columns:1fr 1fr; gap:12px}
+  .foot{display:flex; justify-content:flex-end; gap:10px; margin-top:20px}
+  .err{color:var(--red); font-size:13px; margin-top:8px; min-height:18px}
+
+  @media (max-width:700px){
+    .stats{grid-template-columns:repeat(2,1fr)}
+    .row2{grid-template-columns:1fr}
+  }
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <div class="top">
+      <h1>Assessment Records</h1>
+      <div class="sync" id="sync"><span class="dot busy" id="dot"></span><span id="syncText">Loading…</span></div>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" id="tab-master" aria-selected="true" data-tab="master">Master File<span class="count" id="cMaster">0</span></button>
+    <button class="tab" role="tab" id="tab-pay" aria-selected="false" data-tab="pay">Payment Pending<span class="count" id="cPay">0</span></button>
+    <button class="tab" role="tab" id="tab-dash" aria-selected="false" data-tab="dash">Dashboard</button>
+  </div>
+
+  <div class="tools" id="tools">
+    <input type="search" id="q" placeholder="Search site or remarks" aria-label="Search">
+    <select id="fStatus" aria-label="Filter by status">
+      <option value="">All statuses</option>
+      <option value="Pending">Pending</option>
+      <option value="Bill Generated">Bill Generated</option>
+      <option value="Completed">Completed</option>
+    </select>
+    <select id="fUsage" aria-label="Filter by usage">
+      <option value="">All usage types</option>
+      <option>Flat</option><option>Duplex</option><option>Commercial</option>
+    </select>
+    <button class="btn" id="exportBtn">Export CSV</button>
+    <button class="btn primary" id="addBtn">+ Add site</button>
+  </div>
+
+  <div class="tablewrap" id="view"></div>
+  <p class="note" id="note"></p>
+</main>
+
+<!-- Add / Edit dialog -->
+<dialog id="dlg">
+  <div class="dlg">
+    <h2 id="dlgTitle">Add new site</h2>
+    <label for="fName">Site name</label>
+    <input class="field" id="fName" autocomplete="off" placeholder="e.g. Green Park Apartments">
+
+    <label for="fUnits">Number of units</label>
+    <input class="field" id="fUnits" type="number" min="1" step="1" inputmode="numeric" placeholder="e.g. 24">
+
+    <label>Type of usage</label>
+    <div class="seg" id="usageSeg">
+      <span><input type="radio" name="usage" id="u1" value="Flat" checked><label for="u1">Flat</label></span>
+      <span><input type="radio" name="usage" id="u2" value="Duplex"><label for="u2">Duplex</label></span>
+      <span><input type="radio" name="usage" id="u3" value="Commercial"><label for="u3">Commercial</label></span>
+    </div>
+
+    <label for="fRemarks">Remarks</label>
+    <textarea class="field" id="fRemarks" placeholder="Optional notes"></textarea>
+
+    <div class="err" id="formErr" role="alert"></div>
+    <div class="foot">
+      <button class="btn" id="cancelBtn" type="button">Cancel</button>
+      <button class="btn primary" id="saveBtn" type="button">Save site</button>
+    </div>
+  </div>
+</dialog>
+
+<!-- Delete confirm -->
+<dialog id="delDlg">
+  <div class="dlg">
+    <h2>Delete this site?</h2>
+    <p id="delText" style="color:var(--ink-2);margin:0"></p>
+    <div class="foot">
+      <button class="btn" id="delNo" type="button">Keep it</button>
+      <button class="btn primary" id="delYes" type="button" style="background:var(--red);border-color:var(--red)">Delete site</button>
+    </div>
+  </div>
+</dialog>
+
+<script>
+/* ============ CONFIG ============ */
+const APPS_SCRIPT_URL = "";          // optional: Google Apps Script Web app URL (see comment at top)
+
+/* Shared database on JSONBin.io (easy on mobile). Set by the link you share, e.g.
+   https://your-site/index.html#bin=BINID&key=MASTERKEY
+   The link is read once, saved on that device, then removed from the address bar. */
+(function(){
+  try{
+    const h = new URLSearchParams(location.hash.slice(1));
+    if(h.get("sheet")){
+      localStorage.setItem("sheet-url", h.get("sheet"));
+      history.replaceState(null, "", location.pathname + location.search);
+    }
+    if(h.get("bin") && h.get("key")){
+      localStorage.setItem("jb-bin", h.get("bin"));
+      localStorage.setItem("jb-key", h.get("key"));
+      history.replaceState(null, "", location.pathname + location.search);
+    }
+  }catch(e){}
+})();
+let JB_BIN = "", JB_KEY = "", SHEET_URL = APPS_SCRIPT_URL;
+try{ SHEET_URL = APPS_SCRIPT_URL || localStorage.getItem("sheet-url") || ""; }catch(e){}
+try{ JB_BIN = localStorage.getItem("jb-bin") || ""; JB_KEY = localStorage.getItem("jb-key") || ""; }catch(e){}
+const STORE_KEY = "assessment-records";
+const STATUSES = ["Pending","Bill Generated","Completed"];
+const CLS = {"Pending":"p","Bill Generated":"b","Completed":"c"};
+
+/* ============ STORAGE ADAPTER ============ */
+/* Works in 3 places: Claude artifact (shared), Google Sheet via Apps Script, or local browser. */
+const Store = {
+  mode: (typeof window !== "undefined" && window.storage) ? "claude" : (SHEET_URL ? "sheet" : (JB_BIN && JB_KEY ? "jsonbin" : "local")),
+  async load(){
+    if(this.mode==="claude"){
+      try{ const r = await window.storage.get(STORE_KEY, true); return r ? JSON.parse(r.value) : []; }
+      catch(e){ return []; }   // key doesn't exist yet
+    }
+    if(this.mode==="sheet"){
+      const r = await fetch(SHEET_URL); return await r.json();
+    }
+    if(this.mode==="jsonbin"){
+      const r = await fetch("https://api.jsonbin.io/v3/b/"+JB_BIN+"/latest",{headers:{"X-Master-Key":JB_KEY}});
+      if(!r.ok) throw new Error("JSONBin read failed");
+      const j = await r.json(); const rec = j.record;
+      return Array.isArray(rec) ? rec : (rec && Array.isArray(rec.records) ? rec.records : []);
+    }
+    try{ return JSON.parse(localStorage.getItem(STORE_KEY) || "[]"); }catch(e){ return []; }
+  },
+  async save(list){
+    const s = JSON.stringify(list);
+    if(this.mode==="claude"){ await window.storage.set(STORE_KEY, s, true); return; }
+    if(this.mode==="sheet"){
+      await fetch(SHEET_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:s}); return;
+    }
+    if(this.mode==="jsonbin"){
+      const r = await fetch("https://api.jsonbin.io/v3/b/"+JB_BIN,{method:"PUT",
+        headers:{"Content-Type":"application/json","X-Master-Key":JB_KEY,"X-Bin-Versioning":"false"},
+        body:JSON.stringify({records:list})});
+      if(!r.ok) throw new Error("JSONBin save failed");
+      return;
+    }
+    localStorage.setItem(STORE_KEY, s);
+  }
+};
+
+/* ============ STATE ============ */
+let records = [];
+let tab = "master";
+let editingId = null;
+let deletingId = null;
+let busy = false;
+const $ = id => document.getElementById(id);
+const esc = s => String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmtDate = iso => iso ? new Date(iso).toLocaleDateString(undefined,{day:"2-digit",month:"short",year:"numeric"}) : "—";
+const daysSince = iso => iso ? Math.floor((Date.now()-new Date(iso).getTime())/86400000) : 0;
+
+function setSync(state,text){
+  $("dot").className = "dot" + (state==="busy"?" busy":state==="err"?" err":"");
+  $("syncText").textContent = text;
+}
+
+/* Always re-read the latest data before changing it, so two people editing don't overwrite each other. */
+async function mutate(fn){
+  if(busy) return; busy = true; setSync("busy","Saving…");
+  try{
+    const latest = await Store.load();
+    const next = fn(latest) || latest;
+    await Store.save(next);
+    records = next;
+    setSync("ok","Saved " + new Date().toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}));
+  }catch(e){
+    console.error(e); setSync("err","Could not save. Check connection.");
+  }
+  busy = false; render();
+}
+
+async function refresh(){
+  if(busy || document.querySelector("dialog[open]")) return;
+  try{
+    records = await Store.load();
+    setSync("ok", (Store.mode==="local" ? "Saved on this device only" : "Up to date") );
+    render();
+  }catch(e){ setSync("err","Offline. Retrying…"); }
+}
+
+/* ============ RENDER ============ */
+function summary(){
+  $("cMaster").textContent = records.length;
+  $("cPay").textContent = records.filter(r=>r.status==="Bill Generated").length;
+}
+
+function dashboardHTML(){
+  const n = records.length;
+  const by = s => records.filter(r=>r.status===s);
+  const units = list => list.reduce((a,r)=>a+(+r.units||0),0);
+  const P=by("Pending"), B=by("Bill Generated"), C=by("Completed");
+  if(!n) return `<div class="empty"><b>No data for the dashboard yet</b>Add your first site and the totals will appear here.</div>`;
+  const pct = x => Math.round(x/n*100);
+  const usageRows = ["Flat","Duplex","Commercial"].map(u=>{
+    const l = records.filter(r=>r.usage===u);
+    return `<tr><td>${u}</td><td class="num">${l.length}</td><td class="num">${units(l)}</td>
+      <td class="num">${l.filter(r=>r.status==="Pending").length}</td>
+      <td class="num">${l.filter(r=>r.status==="Bill Generated").length}</td>
+      <td class="num">${l.filter(r=>r.status==="Completed").length}</td></tr>`;
+  }).join("");
+  const oldest = B.filter(r=>r.billDate).sort((x,y)=>x.billDate.localeCompare(y.billDate))[0];
+  return `<div class="dash">
+    <div class="bar" aria-hidden="true"><span class="p" style="width:${P.length/n*100}%"></span><span class="b" style="width:${B.length/n*100}%"></span><span class="c" style="width:${C.length/n*100}%"></span></div>
+    <div class="stats">
+      <div class="stat"><b>${n}</b><small>Total sites · ${units(records)} units</small></div>
+      <div class="stat p"><b>${P.length}</b><small>Pending · ${units(P)} units</small></div>
+      <div class="stat b"><b>${B.length}</b><small>Bill generated · ${units(B)} units</small></div>
+      <div class="stat c"><b>${C.length}</b><small>Completed · ${units(C)} units</small></div>
+      <div class="stat"><b>${pct(C.length)}%</b><small>Sites completed</small></div>
+    </div>
+    <h3>By type of usage</h3>
+    <div class="tablewrap"><table style="min-width:520px"><thead><tr>
+      <th>Usage</th><th class="num">Sites</th><th class="num">Units</th><th class="num">Pending</th><th class="num">Bill generated</th><th class="num">Completed</th></tr></thead>
+      <tbody>${usageRows}</tbody></table></div>
+    ${oldest ? `<p class="note">Longest waiting for payment: <b>${esc(oldest.name)}</b>, bill generated ${daysSince(oldest.billDate)} days ago.</p>` : ""}
+  </div>`;
+}
+
+function filtered(){
+  const q = $("q").value.trim().toLowerCase();
+  const fs = $("fStatus").value, fu = $("fUsage").value;
+  return records.filter(r=>{
+    if(tab==="pay" && r.status!=="Bill Generated") return false;
+    if(tab==="master" && fs && r.status!==fs) return false;
+    if(fu && r.usage!==fu) return false;
+    if(q && !(`${r.name} ${r.remarks}`.toLowerCase().includes(q))) return false;
+    return true;
+  });
+}
+
+function statusSelect(r){
+  return `<select class="status ${CLS[r.status]}" data-status="${r.id}" aria-label="Status of ${esc(r.name)}">
+    ${STATUSES.map(s=>`<option ${s===r.status?"selected":""}>${s}</option>`).join("")}</select>`;
+}
+
+function render(){
+  summary();
+  $("fStatus").style.display = tab==="master" ? "" : "none";
+  $("tools").style.display = tab==="dash" ? "none" : "";
+  if(tab==="dash"){
+    $("view").className = "";
+    $("view").innerHTML = dashboardHTML();
+    $("note").textContent = "";
+    return;
+  }
+  $("view").className = "tablewrap";
+  const list = filtered().sort((a,b)=>(b.created||"").localeCompare(a.created||""));
+  const view = $("view");
+
+  if(tab==="master"){
+    if(!list.length){
+      view.innerHTML = `<div class="empty"><b>${records.length?"No sites match your search":"No sites entered yet"}</b>${records.length?"Try clearing the filters.":"Tap “Add site” to enter the first one."}</div>`;
+    }else{
+      view.innerHTML = `<table><thead><tr>
+        <th>Site</th><th class="num">Units</th><th>Usage</th><th>Status</th><th>Remarks</th><th></th></tr></thead><tbody>
+        ${list.map(r=>`<tr class="row-${CLS[r.status]}">
+          <td><div class="site">${esc(r.name)}</div><div class="sub">Added ${fmtDate(r.created)}</div></td>
+          <td class="num">${esc(r.units)}</td>
+          <td>${esc(r.usage)}</td>
+          <td>${statusSelect(r)}</td>
+          <td class="remarks">${esc(r.remarks)||'<span class="sub">—</span>'}</td>
+          <td class="actions">
+            <button class="btn small" data-edit="${r.id}">Edit</button>
+            <button class="btn small danger" data-del="${r.id}">Delete</button>
+          </td></tr>`).join("")}
+        </tbody></table>`;
+    }
+    $("note").textContent = `Showing ${list.length} of ${records.length} sites.`;
+  }else{
+    if(!list.length){
+      view.innerHTML = `<div class="empty"><b>No payments pending</b>Sites show up here once their status is set to Bill Generated.</div>`;
+      $("note").textContent = "";
+    }else{
+      const total = list.reduce((a,r)=>a+(+r.units||0),0);
+      view.innerHTML = `<table><thead><tr>
+        <th>Site</th><th class="num">Units</th><th>Usage</th><th>Bill generated</th><th class="num">Days waiting</th><th>Remarks</th><th></th></tr></thead><tbody>
+        ${list.map(r=>{const d=daysSince(r.billDate); return `<tr class="row-b">
+          <td><div class="site">${esc(r.name)}</div></td>
+          <td class="num">${esc(r.units)}</td>
+          <td>${esc(r.usage)}</td>
+          <td>${fmtDate(r.billDate)}</td>
+          <td class="num ${d>=30?"late":""}">${d}</td>
+          <td class="remarks">${esc(r.remarks)||'<span class="sub">—</span>'}</td>
+          <td class="actions"><button class="btn small ok" data-done="${r.id}">Mark completed</button></td></tr>`}).join("")}
+        </tbody></table>`;
+      $("note").textContent = `${list.length} sites · ${total} units waiting for payment. Days in red mean 30 days or more.`;
+    }
+  }
+}
+
+/* ============ EVENTS ============ */
+document.querySelectorAll(".tab").forEach(b=>b.addEventListener("click",()=>{
+  tab = b.dataset.tab;
+  document.querySelectorAll(".tab").forEach(t=>t.setAttribute("aria-selected", t===b));
+  render();
+}));
+["q","fStatus","fUsage"].forEach(id=>$(id).addEventListener("input",render));
+
+$("view").addEventListener("change",e=>{
+  const id = e.target.dataset.status; if(!id) return;
+  const status = e.target.value;
+  mutate(list=>{
+    const r = list.find(x=>x.id===id); if(!r) return;
+    r.status = status; r.updated = new Date().toISOString();
+    if(status==="Bill Generated") r.billDate = r.billDate || r.updated;
+    if(status==="Pending") r.billDate = null;
+    if(status==="Completed") r.completedDate = r.updated;
+  });
+});
+$("view").addEventListener("click",e=>{
+  const t = e.target.closest("button"); if(!t) return;
+  if(t.dataset.edit) openForm(t.dataset.edit);
+  if(t.dataset.del){
+    const r = records.find(x=>x.id===t.dataset.del); if(!r) return;
+    deletingId = r.id; $("delText").textContent = `“${r.name}” will be removed for everyone.`; $("delDlg").showModal();
+  }
+  if(t.dataset.done){
+    mutate(list=>{ const r=list.find(x=>x.id===t.dataset.done); if(r){ r.status="Completed"; r.completedDate=r.updated=new Date().toISOString(); } });
+  }
+});
+
+/* form */
+function openForm(id){
+  editingId = id || null;
+  const r = id ? records.find(x=>x.id===id) : null;
+  $("dlgTitle").textContent = r ? "Edit site" : "Add new site";
+  $("saveBtn").textContent = r ? "Save changes" : "Save site";
+  $("fName").value = r ? r.name : "";
+  $("fUnits").value = r ? r.units : "";
+  $("fRemarks").value = r ? (r.remarks||"") : "";
+  const u = r ? r.usage : "Flat";
+  document.querySelectorAll("input[name=usage]").forEach(x=>x.checked = x.value===u);
+  $("formErr").textContent = "";
+  $("dlg").showModal(); $("fName").focus();
+}
+$("addBtn").addEventListener("click",()=>openForm());
+$("cancelBtn").addEventListener("click",()=>$("dlg").close());
+$("saveBtn").addEventListener("click",async ()=>{
+  const name = $("fName").value.trim();
+  const units = parseInt($("fUnits").value,10);
+  const usage = document.querySelector("input[name=usage]:checked").value;
+  const remarks = $("fRemarks").value.trim();
+  if(!name){ $("formErr").textContent = "Enter the site name."; return; }
+  if(!units || units<1){ $("formErr").textContent = "Enter the number of units (1 or more)."; return; }
+  const id = editingId;
+  $("dlg").close();
+  await mutate(list=>{
+    if(id){
+      const r = list.find(x=>x.id===id); if(!r) return;
+      Object.assign(r,{name,units,usage,remarks,updated:new Date().toISOString()});
+    }else{
+      const now = new Date().toISOString();
+      list.push({id:"s"+Date.now().toString(36)+Math.random().toString(36).slice(2,6),
+        name,units,usage,remarks,status:"Pending",created:now,updated:now,billDate:null});
+    }
+  });
+});
+
+/* delete */
+$("delNo").addEventListener("click",()=>$("delDlg").close());
+$("delYes").addEventListener("click",async ()=>{
+  const id = deletingId; $("delDlg").close();
+  await mutate(list=>list.filter(x=>x.id!==id));
+});
+
+/* export */
+$("exportBtn").addEventListener("click",()=>{
+  const cols = ["name","units","usage","status","remarks","created","billDate","completedDate"];
+  const head = ["Site","Units","Usage","Status","Remarks","Date added","Bill generated on","Completed on"];
+  const q = v => `"${String(v==null?"":v).replace(/"/g,'""')}"`;
+  const csv = [head.map(q).join(",")].concat(records.map(r=>cols.map(c=>q(r[c])).join(","))).join("\r\n");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
+  a.download = "assessment-records.csv"; document.body.appendChild(a); a.click(); a.remove();
+});
+
+/* start + auto-refresh so everyone sees changes */
+refresh();
+setInterval(refresh, 15000);
+</script>
+</body>
+</html>
